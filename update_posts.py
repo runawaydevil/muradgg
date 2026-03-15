@@ -67,6 +67,17 @@ def upsert_from_in(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
+def delete_txt_after_ingest() -> None:
+    """Remove os .txt em in/ após ingestão no DB (evita reingerir na próxima execução)."""
+    if not IN_DIR.is_dir():
+        return
+    for path in IN_DIR.glob("*.txt"):
+        try:
+            path.unlink()
+        except OSError:
+            pass
+
+
 def get_posts(conn: sqlite3.Connection) -> list[tuple[str, str, str]]:
     cur = conn.execute(
         "SELECT title, body, created_at FROM posts ORDER BY created_at DESC"
@@ -192,6 +203,7 @@ def main() -> None:
         posts = get_posts(conn)
         html = render_blog_html(posts)
         update_index(html)
+        delete_txt_after_ingest()
         print(f"OK: {len(posts)} post(s) em index.html")
     finally:
         conn.close()
