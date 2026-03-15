@@ -1,2 +1,0 @@
-Bem-vindo ao blog murad.gg
-Esta é a primeira linha e será o título do post. O resto do arquivo é o corpo da postagem. Você pode escrever em várias linhas e o texto será exibido preservando as quebras de linha. Coloque novos arquivos .txt nesta pasta e rode o script update_posts.py para publicar.
