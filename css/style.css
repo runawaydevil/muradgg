@@ -234,10 +234,10 @@ body {
 
 /* Individual Post style */
 .blog-post h2 {
-    color: var(--crt-title);
+    color: var(--crt-text);
     font-size: 1.5rem;
     margin: 1.5rem 0 0.5rem;
-    text-shadow: var(--crt-glow-title);
+    text-shadow: 0 0 4px rgba(232, 240, 232, 0.4);
 }
 
 .blog-post .blog-date {
