@@ -9,6 +9,7 @@ from pathlib import Path
 BASE = Path(__file__).resolve().parent
 DB_PATH = BASE / "posts.db"
 INDEX_PATH = BASE / "index.html"
+RSS_PATH = BASE / "feed.xml"
 
 BLOG_START = "<!-- BLOG_CONTENT -->"
 BLOG_END = "<!-- /BLOG_CONTENT -->"
@@ -47,6 +48,9 @@ def main() -> None:
     finally:
         conn.close()
     update_index_empty()
+    if RSS_PATH.exists():
+        RSS_PATH.unlink()
+        print("OK: feed.xml removido.")
     print("OK: index.html atualizada com blog vazio.")
 
 

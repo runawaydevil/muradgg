@@ -4,6 +4,7 @@ Lê arquivos .txt em in/, persiste no SQLite (posts.db) e atualiza a seção blo
 Primeira linha do .txt = título; resto = corpo do post.
 """
 import sqlite3
+import markdown
 from pathlib import Path
 from datetime import datetime, timezone
 
@@ -11,6 +12,7 @@ BASE = Path(__file__).resolve().parent
 IN_DIR = BASE / "in"
 DB_PATH = BASE / "posts.db"
 INDEX_PATH = BASE / "index.html"
+RSS_PATH = BASE / "feed.xml"
 
 BLOG_START = "<!-- BLOG_CONTENT -->"
 BLOG_END = "<!-- /BLOG_CONTENT -->"
@@ -160,13 +162,14 @@ def render_blog_html(posts: list[tuple[str, str, str]]) -> str:
     parts = ['<section id="blog" class="blog">', '<div id="blog-posts-list">']
     for title, body, created_at in posts:
         safe_title = escape(title)
-        safe_body = escape(body)
+        # Converte Markdown para HTML
+        html_body = markdown.markdown(body, extensions=['fenced_code', 'codehilite', 'tables'])
         date_str = format_date(created_at)
         parts.append(
             f'  <article class="blog-post">'
             f'<h2>{safe_title}</h2>'
             f'<p class="blog-date">{date_str}</p>'
-            f'<div class="blog-body">{safe_body}</div>'
+            f'<div class="blog-body">{html_body}</div>'
             f"</article>"
         )
     parts.append("</div>")
@@ -174,6 +177,44 @@ def render_blog_html(posts: list[tuple[str, str, str]]) -> str:
         parts.append(_pagination_script())
     parts.append("</section>")
     return "\n".join(parts)
+
+
+def generate_rss(posts: list[tuple[str, str, str]]) -> None:
+    """Gera um arquivo RSS 2.0 básico."""
+    items = []
+    # Usamos o domínio murad.gg como base (ajuste conforme necessário)
+    base_url = "https://murad.gg"
+
+    for title, body, created_at in posts:
+        safe_title = escape(title)
+        html_body = markdown.markdown(body, extensions=['fenced_code', 'codehilite', 'tables'])
+        safe_body = escape(html_body)
+        # Formata data para o padrão RSS (RFC 822)
+        try:
+            dt = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+            pub_date = dt.strftime("%a, %d %b %Y %H:%M:%S %z")
+        except Exception:
+            pub_date = created_at
+
+        items.append(f"""    <item>
+      <title>{safe_title}</title>
+      <link>{base_url}</link>
+      <description>{safe_body}</description>
+      <pubDate>{pub_date}</pubDate>
+      <guid isPermaLink="false">{title}-{created_at}</guid>
+    </item>""")
+
+    rss_content = f"""<?xml version="1.0" encoding="UTF-8" ?>
+<rss version="2.0">
+<channel>
+  <title>murad.gg</title>
+  <link>{base_url}</link>
+  <description>Blog pessoal de murad</description>
+  <language>pt-br</language>
+{"\n".join(items)}
+</channel>
+</rss>"""
+    RSS_PATH.write_text(rss_content, encoding="utf-8")
 
 
 def update_index(html_content: str) -> None:
@@ -203,8 +244,9 @@ def main() -> None:
         posts = get_posts(conn)
         html = render_blog_html(posts)
         update_index(html)
+        generate_rss(posts)
         delete_txt_after_ingest()
-        print(f"OK: {len(posts)} post(s) em index.html")
+        print(f"OK: {len(posts)} post(s) em index.html e feed.xml")
     finally:
         conn.close()
 
