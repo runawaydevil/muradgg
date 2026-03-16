@@ -158,10 +158,11 @@ def render_blog_html(posts: list[tuple[str, str, str]]) -> str:
 
     # List view
     parts.append('  <div id="blog-list">')
-    for title, _, _ in posts:
+    for title, _, created_at in posts:
         slug = slugify(title)
         safe_title = escape(title)
-        parts.append(f'    <div class="blog-list-item"><a href="#{slug}">{safe_title}</a></div>')
+        date_str = format_date(created_at)
+        parts.append(f'    <div class="blog-list-item"><span class="blog-list-date">{date_str}</span> <a href="#{slug}">{safe_title}</a></div>')
     parts.append('  </div>')
 
     # Post view
