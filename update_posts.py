@@ -5,6 +5,9 @@ Primeira linha do .txt = título; resto = corpo do post.
 """
 import sqlite3
 import markdown
+import re
+import unicodedata
+from html import escape
 from pathlib import Path
 from datetime import datetime, timezone
 
@@ -16,7 +19,6 @@ RSS_PATH = BASE / "feed.xml"
 
 BLOG_START = "<!-- BLOG_CONTENT -->"
 BLOG_END = "<!-- /BLOG_CONTENT -->"
-POSTS_PER_PAGE = 15
 
 
 def ensure_table(conn: sqlite3.Connection) -> None:
@@ -87,13 +89,6 @@ def get_posts(conn: sqlite3.Connection) -> list[tuple[str, str, str]]:
     return cur.fetchall()
 
 
-def escape(s: str) -> str:
-    return (
-        s.replace("&", "&amp;")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
-        .replace('"', "&quot;")
-    )
 
 
 def format_date(iso: str) -> str:
@@ -104,77 +99,89 @@ def format_date(iso: str) -> str:
         return iso
 
 
-def _pagination_script() -> str:
+def slugify(value: str) -> str:
+    value = (
+        unicodedata.normalize("NFKD", value)
+        .encode("ascii", "ignore")
+        .decode("ascii")
+    )
+    value = re.sub(r"[^\w\s-]", "", value).strip().lower()
+    return re.sub(r"[-\s]+", "-", value)
+
+
+def _routing_script() -> str:
     return r"""
 <script>
 (function() {
-  var PER_PAGE = 15;
-  var blog = document.getElementById('blog');
-  if (!blog) return;
-  var posts = blog.querySelectorAll('.blog-post');
-  if (posts.length <= PER_PAGE) return;
-  var totalPages = Math.ceil(posts.length / PER_PAGE);
-  var currentPage = 1;
-  function showPage(page) {
-    currentPage = page;
-    var start = (page - 1) * PER_PAGE;
-    var end = start + PER_PAGE;
-    for (var i = 0; i < posts.length; i++) {
-      posts[i].style.display = (i >= start && i < end) ? '' : 'none';
+  function route() {
+    var hash = window.location.hash.substring(1);
+    var blogList = document.getElementById('blog-list');
+    var postsContainer = document.getElementById('blog-posts-container');
+    var posts = document.querySelectorAll('.blog-post');
+
+    if (!hash) {
+      if (blogList) blogList.style.display = 'block';
+      if (postsContainer) postsContainer.style.display = 'none';
+      for (var i = 0; i < posts.length; i++) {
+        posts[i].style.display = 'none';
+      }
+    } else {
+      if (blogList) blogList.style.display = 'none';
+      if (postsContainer) postsContainer.style.display = 'block';
+      var found = false;
+      for (var i = 0; i < posts.length; i++) {
+        if (posts[i].id === hash) {
+          posts[i].style.display = 'block';
+          found = true;
+        } else {
+          posts[i].style.display = 'none';
+        }
+      }
+      if (!found && blogList) {
+        window.location.hash = '';
+      }
     }
-    prevLink.className = page <= 1 ? 'blog-pagination-disabled' : '';
-    nextLink.className = page >= totalPages ? 'blog-pagination-disabled' : '';
-    prevLink.style.pointerEvents = page <= 1 ? 'none' : '';
-    nextLink.style.pointerEvents = page >= totalPages ? 'none' : '';
-    info.textContent = 'P\u00e1gina ' + page + ' de ' + totalPages;
+    window.scrollTo(0, 0);
   }
-  var nav = document.createElement('nav');
-  nav.className = 'blog-pagination';
-  nav.setAttribute('aria-label', 'Navega\u00e7\u00e3o do blog');
-  var prevLink = document.createElement('a');
-  prevLink.href = '#';
-  prevLink.textContent = 'Anterior';
-  prevLink.addEventListener('click', function(e) {
-    e.preventDefault();
-    if (currentPage > 1) showPage(currentPage - 1);
-  });
-  var info = document.createElement('span');
-  info.className = 'blog-pagination-info';
-  var nextLink = document.createElement('a');
-  nextLink.href = '#';
-  nextLink.textContent = 'Pr\u00f3xima';
-  nextLink.addEventListener('click', function(e) {
-    e.preventDefault();
-    if (currentPage < totalPages) showPage(currentPage + 1);
-  });
-  nav.appendChild(prevLink);
-  nav.appendChild(info);
-  nav.appendChild(nextLink);
-  blog.appendChild(nav);
-  showPage(1);
+  window.addEventListener('hashchange', route);
+  window.addEventListener('load', route);
 })();
 </script>"""
+
+
 
 
 def render_blog_html(posts: list[tuple[str, str, str]]) -> str:
     if not posts:
         return '<section id="blog" class="blog"></section>'
-    parts = ['<section id="blog" class="blog">', '<div id="blog-posts-list">']
-    for title, body, created_at in posts:
+    parts = ['<section id="blog" class="blog">']
+
+    # List view
+    parts.append('  <div id="blog-list">')
+    for title, _, _ in posts:
+        slug = slugify(title)
         safe_title = escape(title)
-        # Converte Markdown para HTML
+        parts.append(f'    <div class="blog-list-item"><a href="#{slug}">{safe_title}</a></div>')
+    parts.append('  </div>')
+
+    # Post view
+    parts.append('  <div id="blog-posts-container" style="display:none;">')
+    for title, body, created_at in posts:
+        slug = slugify(title)
+        safe_title = escape(title)
         html_body = markdown.markdown(body, extensions=['fenced_code', 'codehilite', 'tables'])
         date_str = format_date(created_at)
         parts.append(
-            f'  <article class="blog-post">'
-            f'<h2>{safe_title}</h2>'
-            f'<p class="blog-date">{date_str}</p>'
-            f'<div class="blog-body">{html_body}</div>'
-            f"</article>"
+            f'    <article class="blog-post" id="{slug}" style="display:none;">'
+            f'      <div class="blog-nav"><a href="#">&lt;-- Voltar</a></div>'
+            f'      <h2>{safe_title}</h2>'
+            f'      <p class="blog-date">{date_str}</p>'
+            f'      <div class="blog-body">{html_body}</div>'
+            f'    </article>'
         )
-    parts.append("</div>")
-    if len(posts) > POSTS_PER_PAGE:
-        parts.append(_pagination_script())
+    parts.append('  </div>')
+
+    parts.append(_routing_script())
     parts.append("</section>")
     return "\n".join(parts)
 
@@ -186,6 +193,7 @@ def generate_rss(posts: list[tuple[str, str, str]]) -> None:
     base_url = "https://murad.gg"
 
     for title, body, created_at in posts:
+        slug = slugify(title)
         safe_title = escape(title)
         html_body = markdown.markdown(body, extensions=['fenced_code', 'codehilite', 'tables'])
         safe_body = escape(html_body)
@@ -198,7 +206,7 @@ def generate_rss(posts: list[tuple[str, str, str]]) -> None:
 
         items.append(f"""    <item>
       <title>{safe_title}</title>
-      <link>{base_url}</link>
+      <link>{base_url}#{slug}</link>
       <description>{safe_body}</description>
       <pubDate>{pub_date}</pubDate>
       <guid isPermaLink="false">{title}-{created_at}</guid>
