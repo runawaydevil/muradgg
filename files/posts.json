@@ -1,0 +1,8 @@
+{
+  "config": {
+    "posts_per_page": 10,
+    "site_title": "murad.gg",
+    "base_url": "https://murad.gg"
+  },
+  "posts": []
+}
